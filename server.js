@@ -13,28 +13,53 @@ const drawnNames=new Map(Object.entries(roster).flatMap(([club,lists])=>[...new 
 for(const item of startOrder){const club=drawnNames.get(norm(item.athlete));if(!club)continue;const key=[item.day,item.group,item.rotation,item.position].join(':');if(!firstStart.has(club)||key.localeCompare(firstStart.get(club))<0)firstStart.set(club,key)}
 async function cached(){try{let response=await fetch('https://raw.githubusercontent.com/escorpin/gymexa-club-live/scores/standings.json',{signal:AbortSignal.timeout(5000)});if(response.ok){let data=await response.json();if(data.standings?.length)state={...data,error:null}}}catch(e){console.log('No existing snapshot:',e.message)}}
 function combinePrevious(current){
- const oldByClub=new Map((state.standings||[]).map(c=>[norm(c.club),c]));
- const toNum=x=>x==null||x==='—'?null:Math.round(Number(String(x).replace(',','.'))*1000);
- const fmt=x=>(x/1000).toFixed(3);
- const mergeRows=(fresh,old)=>{const rows=new Map();
-   for(const a of [...(old||[]),...(fresh||[])]){
-     const key=norm(a.athlete),existing=rows.get(key),number=toNum(a.score),previous=existing?toNum(existing.score):null;
-     if(!existing||number!==null&&(previous===null||number>previous)) rows.set(key,{athlete:a.athlete,score:number===null?null:fmt(number)});
-   }
-   return [...rows.values()].sort((a,b)=>(toNum(b.score)??-1)-(toNum(a.score)??-1)||a.athlete.localeCompare(b.athlete,'tr'))
-     .map((a,i)=>({...a,counted:a.score!==null&&i<3}));
- };
- const sum=rows=>fmt(rows.filter(a=>a.score!==null).slice(0,3).reduce((t,a)=>t+toNum(a.score),0));
- const combined=current.map(c=>{
-   const old=oldByClub.get(norm(c.club));if(!old)return c;
-   const top=mergeRows(c.top,old.top),labut=mergeRows(c.labut,old.labut);
-   const topTotal=sum(top),labutTotal=sum(labut);
-   return {...c,top,labut,topTotal,labutTotal,total:fmt(toNum(topTotal)+toNum(labutTotal)),
-     complete:c.complete||old.complete||((roster[c.club]?.top?.length||4)>=3&&(roster[c.club]?.labut?.length||4)>=3&&top.filter(a=>a.score!==null).length>=Math.min(4,roster[c.club]?.top?.length||4)&&labut.filter(a=>a.score!==null).length>=Math.min(4,roster[c.club]?.labut?.length||4)),
-     hasScore:top.some(a=>a.score!==null)||labut.some(a=>a.score!==null)};
- });
- combined.sort((a,b)=>a.hasScore!==b.hasScore?(a.hasScore?-1:1):a.hasScore?(Number(b.total)-Number(a.total)||a.club.localeCompare(b.club,'tr')):((firstStart.get(a.club)||'9999').localeCompare(firstStart.get(b.club)||'9999')||a.club.localeCompare(b.club,'tr')));
- let ranking=0;return combined.map(c=>({...c,rank:c.hasScore?++ranking:'—'}));
+  const oldByClub=new Map((state.standings||[]).map(c=>[norm(c.club),c]));
+  const scoreOf=x=>{
+    if(x==null||x==='—')return null;
+    const n=Number(String(x).replace(',','.'));
+    return Number.isFinite(n)?Math.round(n*1000):null;
+  };
+  const fmt=n=>(n/1000).toFixed(3);
+  const mergeRows=(club,apparatus,fresh,old)=>{
+    const expected=roster[club]?.[apparatus]||[];
+    const names=new Map(expected.map(a=>[norm(a),a]));
+    const rows=new Map();
+    for(const athlete of expected)rows.set(norm(athlete),{athlete,score:null});
+    // A value from the current source supersedes a stale backup, even if corrected downwards.
+    // Legacy backup zeroes may represent missing values, so never use them to certify completion.
+    for(const a of old||[]){
+      const key=norm(a.athlete),n=scoreOf(a.score);
+      if(!rows.has(key))rows.set(key,{athlete:names.get(key)||a.athlete,score:null});
+      if(n!==null&&n>0)rows.get(key).score=fmt(n);
+    }
+    for(const a of fresh||[]){
+      const key=norm(a.athlete),n=scoreOf(a.score);
+      if(!rows.has(key))rows.set(key,{athlete:names.get(key)||a.athlete,score:null});
+      if(n!==null)rows.get(key).score=fmt(n);
+    }
+    return [...rows.values()].sort((a,b)=>(scoreOf(b.score)??-1)-(scoreOf(a.score)??-1)||a.athlete.localeCompare(b.athlete,'tr'))
+      .map((a,i)=>({...a,counted:a.score!==null&&i<3}));
+  };
+  const total=rows=>rows.filter(a=>a.score!==null).slice(0,3).reduce((n,a)=>n+scoreOf(a.score),0);
+  const complete=(club,top,labut)=>{
+    const expected=roster[club];
+    if(!expected?.top?.length||!expected?.labut?.length)return false;
+    const received=rows=>new Set(rows.filter(a=>a.score!==null).map(a=>norm(a.athlete)));
+    const doneTop=received(top),doneLabut=received(labut);
+    return expected.top.every(a=>doneTop.has(norm(a)))&&expected.labut.every(a=>doneLabut.has(norm(a)));
+  };
+  const combined=current.map(c=>{
+    const previous=oldByClub.get(norm(c.club));
+    const top=mergeRows(c.club,'top',c.top,previous?.top),labut=mergeRows(c.club,'labut',c.labut,previous?.labut);
+    const topScore=total(top),labutScore=total(labut);
+    return {...c,top,labut,topTotal:fmt(topScore),labutTotal:fmt(labutScore),
+      total:fmt(topScore+labutScore),complete:complete(c.club,top,labut),
+      hasScore:top.some(a=>a.score!==null)||labut.some(a=>a.score!==null)};
+  });
+  combined.sort((a,b)=>a.hasScore!==b.hasScore?(a.hasScore?-1:1):
+    a.hasScore?(Number(b.total)-Number(a.total)||a.club.localeCompare(b.club,'tr')):
+    ((firstStart.get(a.club)||'9999').localeCompare(firstStart.get(b.club)||'9999')||a.club.localeCompare(b.club,'tr')));
+  let rank=0;return combined.map(c=>({...c,rank:c.hasScore?++rank:'—'}));
 }
 const clean=x=>(x||'').replace(/\s+/g,' ').trim();
 async function read(){
