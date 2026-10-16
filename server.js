@@ -30,7 +30,7 @@ function combinePrevious(current){
    const top=mergeRows(c.top,old.top),labut=mergeRows(c.labut,old.labut);
    const topTotal=sum(top),labutTotal=sum(labut);
    return {...c,top,labut,topTotal,labutTotal,total:fmt(toNum(topTotal)+toNum(labutTotal)),
-     complete:c.complete||old.complete||top.filter(a=>a.score!==null).length>=4&&labut.filter(a=>a.score!==null).length>=4,
+     complete:c.complete||old.complete||((roster[c.club]?.top?.length||4)>=3&&(roster[c.club]?.labut?.length||4)>=3&&top.filter(a=>a.score!==null).length>=Math.min(4,roster[c.club]?.top?.length||4)&&labut.filter(a=>a.score!==null).length>=Math.min(4,roster[c.club]?.labut?.length||4)),
      hasScore:top.some(a=>a.score!==null)||labut.some(a=>a.score!==null)};
  });
  combined.sort((a,b)=>a.hasScore!==b.hasScore?(a.hasScore?-1:1):a.hasScore?(Number(b.total)-Number(a.total)||a.club.localeCompare(b.club,'tr')):((firstStart.get(a.club)||'9999').localeCompare(firstStart.get(b.club)||'9999')||a.club.localeCompare(b.club,'tr')));
@@ -73,7 +73,7 @@ async function read(){
    const items=kind=>{const m=new Map(c[kind]);for(const athlete of (c.expected[kind]||[]))if(!m.has(athlete))m.set(athlete,null);
     return [...m].map(([athlete,points])=>({athlete,points})).sort((a,b)=>(b.points??-1)-(a.points??-1)||a.athlete.localeCompare(b.athlete,'tr'))};
    const top=items('top'),labut=items('labut'),score=x=>x.filter(r=>r.points!==null).slice(0,3).reduce((s,r)=>s+r.points,0);
-   return {club:c.club,top:top.map((r,i)=>({athlete:r.athlete,score:r.points===null?null:fmt(r.points),counted:r.points!==null&&i<3})),labut:labut.map((r,i)=>({athlete:r.athlete,score:r.points===null?null:fmt(r.points),counted:r.points!==null&&i<3})),topTotal:fmt(score(top)),labutTotal:fmt(score(labut)),total:fmt(score(top)+score(labut)),complete:top.filter(x=>x.points!==null).length>=4&&labut.filter(x=>x.points!==null).length>=4,hasScore:top.some(x=>x.points!==null)||labut.some(x=>x.points!==null)};
+   return {club:c.club,top:top.map((r,i)=>({athlete:r.athlete,score:r.points===null?null:fmt(r.points),counted:r.points!==null&&i<3})),labut:labut.map((r,i)=>({athlete:r.athlete,score:r.points===null?null:fmt(r.points),counted:r.points!==null&&i<3})),topTotal:fmt(score(top)),labutTotal:fmt(score(labut)),total:fmt(score(top)+score(labut)),complete:top.filter(x=>x.points!==null).length>=Math.min(4,c.expected.top?.length||4)&&labut.filter(x=>x.points!==null).length>=Math.min(4,c.expected.labut?.length||4),hasScore:top.some(x=>x.points!==null)||labut.some(x=>x.points!==null)};
   }).sort((a,b)=>a.hasScore!==b.hasScore?(a.hasScore?-1:1):a.hasScore?(Number(b.total)-Number(a.total)||a.club.localeCompare(b.club,'tr')):((firstStart.get(a.club)||'9999').localeCompare(firstStart.get(b.club)||'9999')||a.club.localeCompare(b.club,'tr'))).map((c,i)=>({...c,rank:c.hasScore?i+1:null}));
   if(!standings.length)throw Error('Kaynakta puan bulunamadı');
   state={standings:combinePrevious(standings),updated:new Date().toISOString(),error:null};
