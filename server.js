@@ -45,7 +45,7 @@ async function read(){
    const items=kind=>{const m=new Map(c[kind]);for(const athlete of (c.expected[kind]||[]))if(!m.has(athlete))m.set(athlete,null);
     return [...m].map(([athlete,points])=>({athlete,points})).sort((a,b)=>(b.points??-1)-(a.points??-1)||a.athlete.localeCompare(b.athlete,'tr'))};
    const top=items('top'),labut=items('labut'),score=x=>x.filter(r=>r.points!==null).slice(0,3).reduce((s,r)=>s+r.points,0);
-   return {club:c.club,top:top.map((r,i)=>({athlete:r.athlete,score:r.points===null?null:fmt(r.points),counted:r.points!==null&&i<3})),labut:labut.map((r,i)=>({athlete:r.athlete,score:fmt(r.points),counted:i<3})),topTotal:fmt(score(top)),labutTotal:fmt(score(labut)),total:fmt(score(top)+score(labut)),complete:top.filter(x=>x.points!==null).length>=4&&labut.filter(x=>x.points!==null).length>=4};
+   return {club:c.club,top:top.map((r,i)=>({athlete:r.athlete,score:r.points===null?null:fmt(r.points),counted:r.points!==null&&i<3})),labut:labut.map((r,i)=>({athlete:r.athlete,score:r.points===null?null:fmt(r.points),counted:r.points!==null&&i<3})),topTotal:fmt(score(top)),labutTotal:fmt(score(labut)),total:fmt(score(top)+score(labut)),complete:top.filter(x=>x.points!==null).length>=4&&labut.filter(x=>x.points!==null).length>=4};
   }).sort((a,b)=>Number(b.total)-Number(a.total)||a.club.localeCompare(b.club,'tr')).map((c,i)=>({...c,rank:i+1}));
   if(!standings.length)throw Error('Kaynakta puan bulunamadı');
   state={standings,updated:new Date().toISOString(),error:null};
