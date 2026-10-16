@@ -11,6 +11,19 @@ const norm=s=>String(s||'').toLocaleUpperCase('tr-TR').normalize('NFKD').replace
 const aliases={'ULUSLARARASI ZİRVE G.S.K.':'ULUSLARARASI ZİRVE S.K.','ENDA LİYA KARAN':'ENDA LİA KARAN'};
 const drawnNames=new Map(Object.entries(roster).flatMap(([club,lists])=>[...new Set([...(lists.top||[]),...(lists.labut||[])])].map(name=>[norm(name),club])));
 for(const item of startOrder){const club=drawnNames.get(norm(item.athlete));if(!club)continue;const key=[item.day,item.group,item.rotation,item.position].join(':');if(!firstStart.has(club)||key.localeCompare(firstStart.get(club))<0)firstStart.set(club,key)}
+const lastCompetitionDay=new Map();
+for(const item of startOrder){
+ const club=drawnNames.get(norm(item.athlete));
+ if(!club||!item.day)continue;
+ const previous=lastCompetitionDay.get(club);
+ if(!previous||item.day>previous)lastCompetitionDay.set(club,item.day);
+}
+const endOfDay=day=>day?day+'T'+(day==='2026-10-18'?'17:15:00':'18:40:00')+'+03:00':null;
+function statusFor(club,complete){
+ if(complete)return 'completed';
+ const end=endOfDay(lastCompetitionDay.get(club));
+ return end&&Date.now()>=Date.parse(end)?'missing':'ongoing';
+}
 async function cached(){try{let response=await fetch('https://raw.githubusercontent.com/escorpin/gymexa-club-live/scores/standings.json',{signal:AbortSignal.timeout(5000)});if(response.ok){let data=await response.json();if(data.standings?.length)state={...data,error:null}}}catch(e){console.log('No existing snapshot:',e.message)}}
 function combinePrevious(current){
   const oldByClub=new Map((state.standings||[]).map(c=>[norm(c.club),c]));
@@ -54,7 +67,7 @@ function combinePrevious(current){
     const topScore=total(top),labutScore=total(labut);
     return {...c,top,labut,topTotal:fmt(topScore),labutTotal:fmt(labutScore),
       total:fmt(topScore+labutScore),complete:complete(c.club,top,labut),
-      hasScore:top.some(a=>a.score!==null)||labut.some(a=>a.score!==null)};
+      hasScore:top.some(a=>a.score!==null)||labut.some(a=>a.score!==null),scheduleEnd:endOfDay(lastCompetitionDay.get(c.club))};
   });
   combined.sort((a,b)=>a.hasScore!==b.hasScore?(a.hasScore?-1:1):
     a.hasScore?(Number(b.total)-Number(a.total)||a.club.localeCompare(b.club,'tr')):
@@ -106,7 +119,7 @@ async function read(){
  }finally{await b.close()}
 }
 let busy=false;async function refresh(){if(Date.now()>=cutoff)return;if(busy)return;busy=true;try{await read()}catch(e){state.error=e.message;console.error(e)}finally{busy=false}}
-app.get('/api/standings',(_,res)=>res.set('Cache-Control','no-store').json(state));
+app.get('/api/standings',(_,res)=>res.set('Cache-Control','no-store').json({...state,standings:state.standings.map(c=>({...c,status:statusFor(c.club,c.complete),scheduleEnd:endOfDay(lastCompetitionDay.get(c.club))}))}));
 app.get('/health',(_,res)=>res.json({ok:true,hasData:!!state.updated,error:state.error}));
 app.use(express.static('public'));
 async function init(){
