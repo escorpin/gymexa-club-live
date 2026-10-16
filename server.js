@@ -5,8 +5,12 @@ const app=express(),source='https://gymexascore.net/jnwg8cb2m',PORT=process.env.
 const cutoff=Date.parse('2026-10-20T00:00:00+03:00');
 let state={standings:[],updated:null,error:'Veriler bekleniyor'};
 const roster=JSON.parse(await fs.readFile('./public/roster.json','utf8'));
+const startOrder=JSON.parse(await fs.readFile('./public/start_order.json','utf8'));
+const firstStart=new Map();
 const norm=s=>String(s||'').toLocaleUpperCase('tr-TR').normalize('NFKD').replace(/[.]/g,'').replace(/\s+/g,' ').trim();
 const aliases={'ULUSLARARASI ZİRVE G.S.K.':'ULUSLARARASI ZİRVE S.K.','ENDA LİYA KARAN':'ENDA LİA KARAN'};
+const drawnNames=new Map(Object.entries(roster).flatMap(([club,lists])=>[...new Set([...(lists.top||[]),...(lists.labut||[])])].map(name=>[norm(name),club])));
+for(const item of startOrder){const club=drawnNames.get(norm(item.athlete));if(!club)continue;const key=[item.day,item.group,item.rotation,item.position].join(':');if(!firstStart.has(club)||key.localeCompare(firstStart.get(club))<0)firstStart.set(club,key)}
 async function cached(){try{let response=await fetch('https://raw.githubusercontent.com/escorpin/gymexa-club-live/scores/standings.json',{signal:AbortSignal.timeout(5000)});if(response.ok){let data=await response.json();if(data.standings?.length)state={...data,error:null}}}catch(e){console.log('No existing snapshot:',e.message)}}
 const clean=x=>(x||'').replace(/\s+/g,' ').trim();
 async function read(){
@@ -45,8 +49,8 @@ async function read(){
    const items=kind=>{const m=new Map(c[kind]);for(const athlete of (c.expected[kind]||[]))if(!m.has(athlete))m.set(athlete,null);
     return [...m].map(([athlete,points])=>({athlete,points})).sort((a,b)=>(b.points??-1)-(a.points??-1)||a.athlete.localeCompare(b.athlete,'tr'))};
    const top=items('top'),labut=items('labut'),score=x=>x.filter(r=>r.points!==null).slice(0,3).reduce((s,r)=>s+r.points,0);
-   return {club:c.club,top:top.map((r,i)=>({athlete:r.athlete,score:r.points===null?null:fmt(r.points),counted:r.points!==null&&i<3})),labut:labut.map((r,i)=>({athlete:r.athlete,score:r.points===null?null:fmt(r.points),counted:r.points!==null&&i<3})),topTotal:fmt(score(top)),labutTotal:fmt(score(labut)),total:fmt(score(top)+score(labut)),complete:top.filter(x=>x.points!==null).length>=4&&labut.filter(x=>x.points!==null).length>=4};
-  }).sort((a,b)=>Number(b.total)-Number(a.total)||a.club.localeCompare(b.club,'tr')).map((c,i)=>({...c,rank:i+1}));
+   return {club:c.club,top:top.map((r,i)=>({athlete:r.athlete,score:r.points===null?null:fmt(r.points),counted:r.points!==null&&i<3})),labut:labut.map((r,i)=>({athlete:r.athlete,score:r.points===null?null:fmt(r.points),counted:r.points!==null&&i<3})),topTotal:fmt(score(top)),labutTotal:fmt(score(labut)),total:fmt(score(top)+score(labut)),complete:top.filter(x=>x.points!==null).length>=4&&labut.filter(x=>x.points!==null).length>=4,hasScore:top.some(x=>x.points!==null)||labut.some(x=>x.points!==null)};
+  }).sort((a,b)=>a.hasScore!==b.hasScore?(a.hasScore?-1:1):a.hasScore?(Number(b.total)-Number(a.total)||a.club.localeCompare(b.club,'tr')):((firstStart.get(a.club)||'9999').localeCompare(firstStart.get(b.club)||'9999')||a.club.localeCompare(b.club,'tr'))).map((c,i)=>({...c,rank:c.hasScore?i+1:null}));
   if(!standings.length)throw Error('Kaynakta puan bulunamadı');
   state={standings,updated:new Date().toISOString(),error:null};
   console.log('Updated',standings.length,'clubs');
