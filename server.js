@@ -46,9 +46,9 @@ function highestScoredGroup(){
 function statusFor(club,complete,activeGroup){
  if(complete)return 'completed';
  const groups=clubGroups.get(club)||[];
- if(groups.length&&Math.max(...groups)<activeGroup)return 'missing';
+ if(groups.length&&Math.max(...groups)<activeGroup)return 'completed';
  const end=endOfDay(lastCompetitionDay.get(club));
- return end&&Date.now()>=Date.parse(end)?'missing':'ongoing';
+ return end&&Date.now()>=Date.parse(end)?'completed':'ongoing';
 }
 async function cached(){try{let response=await fetch('https://raw.githubusercontent.com/escorpin/gymexa-club-live/scores/standings.json',{signal:AbortSignal.timeout(5000)});if(response.ok){let data=await response.json();if(data.standings?.length)state={...data,error:null}}}catch(e){console.log('No existing snapshot:',e.message)}}
 function combinePrevious(current){
