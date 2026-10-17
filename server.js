@@ -19,8 +19,34 @@ for(const item of startOrder){
  if(!previous||item.day>previous)lastCompetitionDay.set(club,item.day);
 }
 const endOfDay=day=>day?day+'T'+(day==='2026-10-18'?'17:15:00':'18:40:00')+'+03:00':null;
-function statusFor(club,complete){
+const drawByAthlete=new Map();
+for(const item of startOrder){
+ const k=norm(item.athlete);
+ if(!drawByAthlete.has(k))drawByAthlete.set(k,[]);
+ drawByAthlete.get(k).push(item);
+}
+const clubGroups=new Map();
+for(const [club,lists] of Object.entries(roster)){
+ const found=[...new Set([...(lists.top||[]),...(lists.labut||[])].flatMap(n=>(drawByAthlete.get(norm(n))||[]).map(x=>x.group)))];
+ clubGroups.set(club,found);
+}
+function highestScoredGroup(){
+ let active=0;
+ for(const c of state.standings){
+  for(const [apparatus,rows] of [['top',c.top||[]],['labut',c.labut||[]]]){
+   for(const a of rows){
+    if(a.score==null||!Number.isFinite(Number(a.score)))continue;
+    const slots=(drawByAthlete.get(norm(a.athlete))||[]).filter(x=>x.apparatus===apparatus);
+    for(const slot of slots)active=Math.max(active,slot.group);
+   }
+  }
+ }
+ return active;
+}
+function statusFor(club,complete,activeGroup){
  if(complete)return 'completed';
+ const groups=clubGroups.get(club)||[];
+ if(groups.length&&Math.max(...groups)<activeGroup)return 'missing';
  const end=endOfDay(lastCompetitionDay.get(club));
  return end&&Date.now()>=Date.parse(end)?'missing':'ongoing';
 }
@@ -120,7 +146,7 @@ async function read(){
  }finally{await b.close()}
 }
 let busy=false;async function refresh(){if(Date.now()>=cutoff)return;if(busy)return;busy=true;try{await read()}catch(e){state.error=e.message;console.error(e)}finally{busy=false}}
-app.get('/api/standings',(_,res)=>res.set('Cache-Control','no-store').json({...state,standings:state.standings.map(c=>({...c,status:statusFor(c.club,c.complete),scheduleEnd:endOfDay(lastCompetitionDay.get(c.club))}))}));
+app.get('/api/standings',(_,res)=>{const activeGroup=highestScoredGroup();res.set('Cache-Control','no-store').json({...state,activeGroup,standings:state.standings.map(c=>({...c,status:statusFor(c.club,c.complete,activeGroup),scheduleEnd:endOfDay(lastCompetitionDay.get(c.club))}))});});
 app.get('/health',(_,res)=>res.json({ok:true,hasData:!!state.updated,error:state.error}));
 app.use(express.static('public'));
 async function init(){
