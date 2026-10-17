@@ -94,6 +94,7 @@ async function read(){
    }).filter(Boolean));
    results.push(...rows.map(r=>({...r,apparatus:key})));
   }
+  console.log('SOURCE_ROWS',JSON.stringify({total:results.length,top:results.filter(x=>x.apparatus==='top').length,labut:results.filter(x=>x.apparatus==='labut').length,positive:results.filter(x=>Number(String(x.score).replace(',','.'))>0).length,sample:results.filter(x=>Number(String(x.score).replace(',','.'))>0).slice(-2)}));
   const clubs=new Map();
   for(const [club,lists] of Object.entries(roster))clubs.set(club,{club,top:new Map(),labut:new Map(),expected:lists});
   for(const r of results){
@@ -115,7 +116,7 @@ async function read(){
   }).sort((a,b)=>a.hasScore!==b.hasScore?(a.hasScore?-1:1):a.hasScore?(Number(b.total)-Number(a.total)||a.club.localeCompare(b.club,'tr')):((firstStart.get(a.club)||'9999').localeCompare(firstStart.get(b.club)||'9999')||a.club.localeCompare(b.club,'tr'))).map((c,i)=>({...c,rank:c.hasScore?i+1:null}));
   if(!standings.length)throw Error('Kaynakta puan bulunamadı');
   state={standings:combinePrevious(standings),updated:new Date().toISOString(),error:null};
-  console.log('Updated',standings.length,'clubs');
+  const scored=state.standings.filter(c=>c.hasScore).length;const valid=state.standings.reduce((n,c)=>n+[...c.top,...c.labut].filter(a=>a.score!==null&&Number(a.score)>0).length,0);console.log('Updated',standings.length,'clubs; scored clubs',scored,'positive routines',valid);
  }finally{await b.close()}
 }
 let busy=false;async function refresh(){if(Date.now()>=cutoff)return;if(busy)return;busy=true;try{await read()}catch(e){state.error=e.message;console.error(e)}finally{busy=false}}
